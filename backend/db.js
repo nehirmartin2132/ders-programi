@@ -1,21 +1,21 @@
-import Database from 'better-sqlite3';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import pg from 'pg';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const db = new Database(path.join(__dirname, 'data.sqlite'));
+const { Pool } = pg;
 
-db.pragma('journal_mode = WAL');
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false },
+});
 
-db.exec(`
+await pool.query(`
   CREATE TABLE IF NOT EXISTS courses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     type TEXT NOT NULL CHECK (type IN ('required', 'elective')),
     color TEXT NOT NULL,
-    sessions TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    sessions JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
 `);
 
-export default db;
+export default pool;

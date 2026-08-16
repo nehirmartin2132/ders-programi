@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import db from '../db.js';
+import pool from '../db.js';
 
 const router = Router();
 
@@ -11,7 +11,7 @@ function rowToCourse(row) {
     name: row.name,
     type: row.type,
     color: row.color,
-    sessions: JSON.parse(row.sessions),
+    sessions: row.sessions,
   };
 }
 
@@ -27,37 +27,48 @@ function validateSessions(sessions) {
   return null;
 }
 
-router.get('/', (req, res) => {
-  const rows = db.prepare('SELECT * FROM courses ORDER BY created_at ASC').all();
-  res.json(rows.map(rowToCourse));
+router.get('/', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM courses ORDER BY created_at ASC');
+    res.json(rows.map(rowToCourse));
+  } catch (err) {
+    next(err);
+  }
 });
 
-router.post('/', (req, res) => {
-  const { name, type, sessions } = req.body;
-  if (!name || typeof name !== 'string' || !name.trim()) {
-    return res.status(400).json({ error: 'Ders adı gerekli.' });
+router.post('/', async (req, res, next) => {
+  try {
+    const { name, type, sessions } = req.body;
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ error: 'Ders adı gerekli.' });
+    }
+    if (type !== 'required' && type !== 'elective') {
+      return res.status(400).json({ error: 'Tür "required" veya "elective" olmalı.' });
+    }
+    const sessionError = validateSessions(sessions);
+    if (sessionError) return res.status(400).json({ error: sessionError });
+
+    const { rows: countRows } = await pool.query('SELECT COUNT(*)::int AS c FROM courses');
+    const color = COLORS[countRows[0].c % COLORS.length];
+
+    const { rows } = await pool.query(
+      'INSERT INTO courses (name, type, color, sessions) VALUES ($1, $2, $3, $4) RETURNING *',
+      [name.trim(), type, color, JSON.stringify(sessions)]
+    );
+    res.status(201).json(rowToCourse(rows[0]));
+  } catch (err) {
+    next(err);
   }
-  if (type !== 'required' && type !== 'elective') {
-    return res.status(400).json({ error: 'Tür "required" veya "elective" olmalı.' });
-  }
-  const sessionError = validateSessions(sessions);
-  if (sessionError) return res.status(400).json({ error: sessionError });
-
-  const count = db.prepare('SELECT COUNT(*) as c FROM courses').get().c;
-  const color = COLORS[count % COLORS.length];
-
-  const result = db
-    .prepare('INSERT INTO courses (name, type, color, sessions) VALUES (?, ?, ?, ?)')
-    .run(name.trim(), type, color, JSON.stringify(sessions));
-
-  const row = db.prepare('SELECT * FROM courses WHERE id = ?').get(result.lastInsertRowid);
-  res.status(201).json(rowToCourse(row));
 });
 
-router.delete('/:id', (req, res) => {
-  const result = db.prepare('DELETE FROM courses WHERE id = ?').run(req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Ders bulunamadı.' });
-  res.status(204).end();
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const { rowCount } = await pool.query('DELETE FROM courses WHERE id = $1', [req.params.id]);
+    if (rowCount === 0) return res.status(404).json({ error: 'Ders bulunamadı.' });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
 });
 
 export default router;
