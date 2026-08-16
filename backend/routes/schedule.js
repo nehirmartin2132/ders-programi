@@ -17,7 +17,7 @@ router.post('/generate', async (req, res, next) => {
       name: row.name,
       type: row.type,
       color: row.color,
-      sessions: row.sessions,
+      sections: row.sections,
     }));
 
     const result = generateSchedules(courses, electiveCount);

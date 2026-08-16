@@ -1,5 +1,9 @@
 const DAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 
+function sectionLabel(sessions) {
+  return sessions.map((s) => `${DAYS[s.day]} ${s.start}-${s.end}`).join(', ');
+}
+
 export default function CourseList({ courses, onDelete }) {
   return (
     <div className="card">
@@ -17,9 +21,15 @@ export default function CourseList({ courses, onDelete }) {
                   </span>
                   <strong>{c.name}</strong>
                 </div>
-                <div className="sessions">
-                  {c.sessions.map((s) => `${DAYS[s.day]} ${s.start}-${s.end}`).join(', ')}
-                </div>
+                {c.sections.length > 1 ? (
+                  <div className="sessions">
+                    {c.sections.map((sec, i) => (
+                      <div key={i}>Şube {i + 1}: {sectionLabel(sec.sessions)}</div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="sessions">{sectionLabel(c.sections[0].sessions)}</div>
+                )}
               </div>
               <button type="button" className="remove-x" title="Sil" onClick={() => onDelete(c.id)}>🗑</button>
             </div>

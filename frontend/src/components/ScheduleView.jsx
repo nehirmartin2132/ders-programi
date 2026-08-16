@@ -33,7 +33,9 @@ export default function ScheduleView({ schedule }) {
       <div className="legend">
         {schedule.map((c) => (
           <span key={c.id} style={{ background: c.color }}>
-            {c.name}{c.type === 'elective' ? ' (S)' : ''}
+            {c.name}
+            {c.type === 'elective' ? ' (S)' : ''}
+            {c.sectionCount > 1 ? ` — Şube ${c.sectionIndex + 1}` : ''}
           </span>
         ))}
       </div>
@@ -76,7 +78,7 @@ export default function ScheduleView({ schedule }) {
                   background: c.color,
                 }}
               >
-                <strong>{c.name}</strong><br />{s.start}-{s.end}
+                <strong>{c.name}</strong>{c.sectionCount > 1 ? ` (Ş${c.sectionIndex + 1})` : ''}<br />{s.start}-{s.end}
               </div>
             );
           })

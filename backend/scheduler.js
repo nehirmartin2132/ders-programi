@@ -8,9 +8,9 @@ function sessionsConflict(a, b) {
   return timeToMinutes(a.start) < timeToMinutes(b.end) && timeToMinutes(b.start) < timeToMinutes(a.end);
 }
 
-function coursesConflict(c1, c2) {
-  for (const s1 of c1.sessions) {
-    for (const s2 of c2.sessions) {
+function sectionsConflict(secA, secB) {
+  for (const s1 of secA.sessions) {
+    for (const s2 of secB.sessions) {
       if (sessionsConflict(s1, s2)) return true;
     }
   }
@@ -35,21 +35,64 @@ function combinations(arr, k) {
 }
 
 /**
- * Generates all conflict-free weekly schedules containing every required
- * course plus exactly `electiveCount` electives chosen from the pool.
+ * Every course carries one or more sections (şube); a schedule picks exactly
+ * one section per included course. Explores every required-course section
+ * assignment that doesn't conflict internally, since that set is independent
+ * of which electives get chosen.
+ */
+function buildRequiredAssignments(required) {
+  const assignments = [];
+  function helper(idx, chosen) {
+    if (idx === required.length) {
+      assignments.push(chosen.slice());
+      return;
+    }
+    const course = required[idx];
+    for (const section of course.sections) {
+      let ok = true;
+      for (const picked of chosen) {
+        if (sectionsConflict(picked.section, section)) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) {
+        chosen.push({ course, section });
+        helper(idx + 1, chosen);
+        chosen.pop();
+      }
+    }
+  }
+  helper(0, []);
+  return assignments;
+}
+
+function toScheduleItem(course, section, sectionIndex) {
+  return {
+    id: course.id,
+    name: course.name,
+    type: course.type,
+    color: course.color,
+    sessions: section.sessions,
+    sectionIndex,
+    sectionCount: course.sections.length,
+  };
+}
+
+/**
+ * Generates all conflict-free weekly schedules containing one section of
+ * every required course plus exactly `electiveCount` electives chosen from
+ * the pool (electives have a single implicit section).
  */
 export function generateSchedules(courses, electiveCount) {
   const required = courses.filter((c) => c.type === 'required');
   const electives = courses.filter((c) => c.type === 'elective');
 
-  for (let i = 0; i < required.length; i++) {
-    for (let j = i + 1; j < required.length; j++) {
-      if (coursesConflict(required[i], required[j])) {
-        return {
-          error: `Zorunlu dersler kendi aralarında çakışıyor: "${required[i].name}" ve "${required[j].name}".`,
-        };
-      }
-    }
+  const requiredAssignments = buildRequiredAssignments(required);
+  if (required.length > 0 && requiredAssignments.length === 0) {
+    return {
+      error: 'Zorunlu derslerin şubeleri arasında çakışmayan bir kombinasyon yok.',
+    };
   }
 
   if (electiveCount > electives.length) {
@@ -61,24 +104,34 @@ export function generateSchedules(courses, electiveCount) {
   const electiveCombos = electiveCount === 0 ? [[]] : combinations(electives, electiveCount);
   const validSchedules = [];
 
-  for (const combo of electiveCombos) {
-    let ok = true;
-    for (let i = 0; i < combo.length && ok; i++) {
-      for (let j = i + 1; j < combo.length && ok; j++) {
-        if (coursesConflict(combo[i], combo[j])) ok = false;
+  for (const reqAssignment of requiredAssignments) {
+    for (const electiveCombo of electiveCombos) {
+      let ok = true;
+      for (let i = 0; i < electiveCombo.length && ok; i++) {
+        for (let j = i + 1; j < electiveCombo.length && ok; j++) {
+          if (sectionsConflict(electiveCombo[i].sections[0], electiveCombo[j].sections[0])) ok = false;
+        }
       }
-    }
-    if (ok) {
-      outer: for (const req of required) {
-        for (const el of combo) {
-          if (coursesConflict(req, el)) {
-            ok = false;
-            break outer;
+      if (ok) {
+        outer: for (const el of electiveCombo) {
+          for (const req of reqAssignment) {
+            if (sectionsConflict(req.section, el.sections[0])) {
+              ok = false;
+              break outer;
+            }
           }
         }
       }
+      if (ok) {
+        const schedule = [
+          ...reqAssignment.map(({ course, section }) =>
+            toScheduleItem(course, section, course.sections.indexOf(section))
+          ),
+          ...electiveCombo.map((course) => toScheduleItem(course, course.sections[0], 0)),
+        ];
+        validSchedules.push(schedule);
+      }
     }
-    if (ok) validSchedules.push([...required, ...combo]);
   }
 
   return { schedules: validSchedules };
